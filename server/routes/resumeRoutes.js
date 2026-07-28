@@ -4,7 +4,7 @@
  */
 
 import express from "express";
-import { body, validationResult } from "express-validator";
+import { validateResumeOptimize, validateResumeRewrite, validateResumeCompare, validateGeneratePdf, validateAnalyzeKeywords } from "../middleware/validators.js";
 import { generateOptimizedResume, generatePDFResume } from "../services/resumeBuilderService.js";
 import { rewriteResumeForJob, getResumeChangeSummary } from "../services/resumeRewriterService.js";
 import { optionalAuth } from "../middleware/auth.js";
@@ -15,15 +15,8 @@ const router = express.Router();
  * POST /api/resume/optimize
  * Generate ATS-optimized resume content
  */
-router.post("/optimize", optionalAuth, [
-  body("jobDescription").notEmpty().withMessage("Job description is required"),
-  body("keywords").isArray().withMessage("Keywords must be an array")
-], async (req, res) => {
+router.post("/optimize", optionalAuth, validateResumeOptimize, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
 
     const { userData, jobDescription, keywords } = req.body;
     
@@ -48,13 +41,9 @@ router.post("/optimize", optionalAuth, [
  * POST /api/resume/generate-pdf
  * Generate downloadable PDF resume
  */
-router.post("/generate-pdf", optionalAuth, async (req, res) => {
+router.post("/generate-pdf", optionalAuth, validateGeneratePdf, async (req, res) => {
   try {
     const { resumeData } = req.body;
-    
-    if (!resumeData) {
-      return res.status(400).json({ error: "Resume data is required" });
-    }
 
     const pdfBuffer = await generatePDFResume(resumeData);
     
@@ -110,14 +99,8 @@ router.get("/templates", (req, res) => {
  * POST /api/resume/analyze-keywords
  * Extract keywords from job description
  */
-router.post("/analyze-keywords", [
-  body("jobDescription").notEmpty().isLength({ min: 50 })
-], async (req, res) => {
+router.post("/analyze-keywords", validateAnalyzeKeywords, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
 
     const { jobDescription } = req.body;
     
@@ -160,15 +143,8 @@ router.post("/analyze-keywords", [
  * POST /api/resume/rewrite
  * Rewrite resume to match job description
  */
-router.post("/rewrite", optionalAuth, [
-  body("resumeText").notEmpty().withMessage("Resume text is required"),
-  body("jobDescription").notEmpty().withMessage("Job description is required")
-], async (req, res) => {
+router.post("/rewrite", optionalAuth, validateResumeRewrite, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
 
     const { resumeText, jobDescription } = req.body;
 
@@ -204,16 +180,8 @@ router.post("/rewrite", optionalAuth, [
  * POST /api/resume/compare
  * Get detailed comparison between original and improved resume
  */
-router.post("/compare", optionalAuth, [
-  body("originalResume").notEmpty(),
-  body("improvedResume").notEmpty(),
-  body("jobDescription").notEmpty()
-], async (req, res) => {
+router.post("/compare", optionalAuth, validateResumeCompare, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
 
     const { originalResume, improvedResume, jobDescription } = req.body;
 

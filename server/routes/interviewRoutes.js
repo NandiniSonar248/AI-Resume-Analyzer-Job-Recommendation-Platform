@@ -11,6 +11,7 @@ import {
   generateSampleAnswer,
   calculatePerformance,
 } from "../services/interviewPrepService.js";
+import { validateInterviewGenerate, validateInterviewEvaluate, validateInterviewSample, validateInterviewPerformance } from "../middleware/validators.js";
 
 const router = express.Router();
 
@@ -18,16 +19,9 @@ const router = express.Router();
  * POST /api/interview/generate-questions
  * Generate 8 interview questions based on job description and resume
  */
-router.post("/generate-questions", async (req, res) => {
+router.post("/generate-questions", validateInterviewGenerate, async (req, res) => {
   try {
     const { jobDescription, resume } = req.body;
-
-    if (!jobDescription || !resume) {
-      return res.status(400).json({
-        success: false,
-        error: "Job description and resume are required",
-      });
-    }
 
     const questions =
       await generateInterviewQuestions(
@@ -53,16 +47,9 @@ router.post("/generate-questions", async (req, res) => {
  * POST /api/interview/evaluate-answer
  * Evaluate user's answer to an interview question
  */
-router.post("/evaluate-answer", async (req, res) => {
+router.post("/evaluate-answer", validateInterviewEvaluate, async (req, res) => {
   try {
     const { question, userAnswer, jobDescription, resume } = req.body;
-
-    if (!question || !userAnswer) {
-      return res.status(400).json({
-        success: false,
-        error: "Question and answer are required",
-      });
-    }
 
     const evaluation = await evaluateAnswer(
       question,
@@ -88,16 +75,9 @@ router.post("/evaluate-answer", async (req, res) => {
  * POST /api/interview/sample-answer
  * Generate a sample answer for a question
  */
-router.post("/sample-answer", async (req, res) => {
+router.post("/sample-answer", validateInterviewSample, async (req, res) => {
   try {
     const { question, jobDescription } = req.body;
-
-    if (!question) {
-      return res.status(400).json({
-        success: false,
-        error: "Question is required",
-      });
-    }
 
     const sampleAnswer = await generateSampleAnswer(
       question,
@@ -121,16 +101,9 @@ router.post("/sample-answer", async (req, res) => {
  * POST /api/interview/calculate-performance
  * Calculate overall interview performance
  */
-router.post("/calculate-performance", async (req, res) => {
+router.post("/calculate-performance", validateInterviewPerformance, async (req, res) => {
   try {
     const { scores } = req.body;
-
-    if (!Array.isArray(scores)) {
-      return res.status(400).json({
-        success: false,
-        error: "Scores must be an array",
-      });
-    }
 
     const performance = calculatePerformance(scores);
 

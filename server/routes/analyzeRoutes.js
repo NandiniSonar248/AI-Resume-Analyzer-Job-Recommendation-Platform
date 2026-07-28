@@ -25,8 +25,58 @@ import { calculateATS, getScoreCategory } from "../services/atsEngine.js";
 import { generateSuggestions } from "../services/llamaService.js";
 import { generateAISuggestions, isAIAvailable } from "../services/aiService.js";
 import { validateResume } from "../services/resumeValidator.js";
-import { optionalAuth } from "../middleware/auth.js";
+import { optionalAuth, authenticate } from "../middleware/auth.js";
 import Analysis from "../models/Analysis.js";
+import { validateAnalyze } from "../middleware/validators.js";
+
+/**
+ * Validate file content by checking magic bytes (file signature).
+ * This prevents uploading malicious files disguised with a fake extension.
+ *
+ * Magic bytes for supported formats:
+ *   PDF:  %PDF  (hex: 25 50 44 46)
+ *   DOCX: PK    (hex: 50 4B 03 04) — DOCX is a ZIP archive
+ *   DOC:  ÐÏ    (hex: D0 CF 11 E0) — OLE2 Compound Document
+ *   TXT:  No magic bytes — validated by checking for valid UTF-8 text
+ */
+function validateFileMagicBytes(filePath, originalName) {
+  const ext = path.extname(originalName).toLowerCase();
+  const buffer = Buffer.alloc(4);
+  const fd = fs.openSync(filePath, "r");
+  fs.readSync(fd, buffer, 0, 4, 0);
+  fs.closeSync(fd);
+
+  const magicBytes = {
+    ".pdf": [0x25, 0x50, 0x44, 0x46],   // %PDF
+    ".docx": [0x50, 0x4B, 0x03, 0x04],  // PK (ZIP)
+    ".doc": [0xD0, 0xCF, 0x11, 0xE0],   // OLE2
+  };
+
+  if (ext === ".txt") {
+    // For TXT files, verify it's valid UTF-8 text (no binary content)
+    const fullBuffer = fs.readFileSync(filePath);
+    const text = fullBuffer.toString("utf-8");
+    // Check for null bytes or excessive non-printable characters
+    const nonPrintable = text.replace(/[\x20-\x7E\n\r\t]/g, "").length;
+    if (nonPrintable / text.length > 0.1) {
+      return { valid: false, reason: "File appears to contain binary content, not text" };
+    }
+    return { valid: true };
+  }
+
+  const expected = magicBytes[ext];
+  if (!expected) {
+    return { valid: false, reason: `Unsupported file type: ${ext}` };
+  }
+
+  for (let i = 0; i < expected.length; i++) {
+    if (buffer[i] !== expected[i]) {
+      return { valid: false, reason: `File content does not match ${ext.toUpperCase()} format. The file may be corrupted or have a fake extension.` };
+    }
+  }
+
+  return { valid: true };
+}
 
 const router = express.Router();
 
@@ -57,7 +107,7 @@ const upload = multer({
 
 // POST /api/analyze - Real-time resume analysis
 // Uses optionalAuth to link analysis to user if logged in
-router.post("/", optionalAuth, upload.single("resume"), async (req, res) => {
+router.post("/", optionalAuth, upload.single("resume"), validateAnalyze, async (req, res) => {
   const filePath = req.file?.path;
   const originalName = req.file?.originalname || "";
   
@@ -66,9 +116,25 @@ router.post("/", optionalAuth, upload.single("resume"), async (req, res) => {
     if (!filePath) {
       return res.status(400).json({ error: "Please upload a resume file (PDF, DOCX, or TXT)" });
     }
-    if (!req.body.jobDescription?.trim()) {
-      return res.status(400).json({ error: "Please provide a job description" });
+
+    // Validate file content by magic bytes (not just extension)
+    const fileValidation = validateFileMagicBytes(filePath, originalName);
+    if (!fileValidation.valid) {
+      return res.status(400).json({
+        error: fileValidation.reason,
+        hint: "Please upload a genuine PDF, DOCX, or TXT file."
+      });
     }
+
+    // Enforce minimum file size (a valid resume can't be < 100 bytes)
+    const fileStats = fs.statSync(filePath);
+    if (fileStats.size < 100) {
+      return res.status(400).json({
+        error: "File is too small to be a valid resume.",
+        hint: "Please upload a document with actual content."
+      });
+    }
+    // Request is validated by validateAnalyze middleware
 
     console.log(`Processing resume file...`);
 
@@ -149,10 +215,10 @@ router.post("/", optionalAuth, upload.single("resume"), async (req, res) => {
 });
 
 // GET /api/analyze/history - Get user's analysis history
-router.get("/history", optionalAuth, async (req, res) => {
+router.get("/history", authenticate, async (req, res) => {
   try {
     // Build query - show user's own history or global if not logged in
-    const query = req.user ? { userId: req.user._id } : {};
+    const query = { userId: req.user._id };
     
     const history = await Analysis.find(query)
       .sort({ createdAt: -1 })
@@ -165,7 +231,7 @@ router.get("/history", optionalAuth, async (req, res) => {
 });
 
 // DELETE /api/analyze/history/:id - Delete specific analysis
-router.delete("/history/:id", optionalAuth, async (req, res) => {
+router.delete("/history/:id", authenticate, async (req, res) => {
   try {
     const analysis = await Analysis.findById(req.params.id);
     
@@ -174,7 +240,7 @@ router.delete("/history/:id", optionalAuth, async (req, res) => {
     }
     
     // Only owner can delete
-    if (req.user && analysis.userId?.toString() !== req.user._id.toString()) {
+    if (analysis.userId?.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: "Not authorized to delete this analysis" });
     }
     
@@ -186,15 +252,11 @@ router.delete("/history/:id", optionalAuth, async (req, res) => {
 });
 
 // DELETE /api/analyze/history - Clear user's history
-router.delete("/history", optionalAuth, async (req, res) => {
+router.delete("/history", authenticate, async (req, res) => {
   try {
     // Only delete user's own history if logged in
-    if (req.user) {
-      await Analysis.deleteMany({ userId: req.user._id });
-      res.json({ message: "Your analysis history cleared" });
-    } else {
-      res.status(401).json({ error: "Login required to clear history" });
-    }
+    await Analysis.deleteMany({ userId: req.user._id });
+    res.json({ message: "Your analysis history cleared" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

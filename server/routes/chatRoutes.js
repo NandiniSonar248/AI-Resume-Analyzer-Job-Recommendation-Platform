@@ -11,6 +11,7 @@ import {
   clearChatHistory,
   getChatHistory
 } from "../services/aiChatService.js";
+import { validateChatMessage } from "../middleware/validators.js";
 
 const router = express.Router();
 
@@ -18,16 +19,10 @@ const router = express.Router();
  * POST /api/chat/message
  * Send message to AI assistant
  */
-router.post("/message", optionalAuth, async (req, res) => {
+router.post("/message", optionalAuth, validateChatMessage, async (req, res) => {
   try {
     const { message } = req.body;
     const userId = req.user?.id || `guest-${req.ip}`;
-
-    if (!message || message.trim().length < 2) {
-      return res.status(400).json({
-        error: "Message is required (minimum 2 characters)"
-      });
-    }
 
     // Initialize session
     initializeChatSession(userId);
