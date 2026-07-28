@@ -22,7 +22,8 @@ import {
   registerUser, 
   getCurrentUser, 
   verifyEmail as verifyEmailAPI,
-  resendOTP as resendOTPAPI
+  resendOTP as resendOTPAPI,
+  logoutUser
 } from "../api";
 
 const AuthContext = createContext(null);
@@ -54,6 +55,7 @@ export function AuthProvider({ children }) {
       setUser(userData);
     } catch (err) {
       localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
     } finally {
       setLoading(false);
     }
@@ -72,6 +74,9 @@ export function AuthProvider({ children }) {
       }
       
       localStorage.setItem("token", response.token);
+      if (response.refreshToken) {
+        localStorage.setItem("refreshToken", response.refreshToken);
+      }
       localStorage.removeItem("guestMode");
       setIsGuest(false);
       setUser(response.user);
@@ -106,6 +111,9 @@ export function AuthProvider({ children }) {
     try {
       const response = await verifyEmailAPI(email, otp);
       localStorage.setItem("token", response.token);
+      if (response.refreshToken) {
+        localStorage.setItem("refreshToken", response.refreshToken);
+      }
       localStorage.removeItem("guestMode");
       setIsGuest(false);
       setUser(response.user);
@@ -127,8 +135,14 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await logoutUser();
+    } catch (err) {
+      // Ignore errors during logout — we'll clear local state regardless
+    }
     localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("guestMode");
     setUser(null);
     setIsGuest(false);
