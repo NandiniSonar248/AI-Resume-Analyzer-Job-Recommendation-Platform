@@ -1,9 +1,14 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-super-secret-jwt-key-change-in-production";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "15m";
 
+// Fail fast if JWT_SECRET is not set
+if (!JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET environment variable is not set. Server cannot start securely.");
+  process.exit(1);
+}
 /**
  * Generate JWT token
  */
@@ -12,11 +17,23 @@ export function generateToken(userId) {
 }
 
 /**
+ * Generate a refresh token (long-lived, 7 days)
+ * Used for token rotation — client exchanges this for a new access + refresh token pair.
+ */
+export function generateRefreshToken(userId) {
+  return jwt.sign({ id: userId, type: "refresh" }, JWT_SECRET, { expiresIn: "7d" });
+}
+
+/**
  * Verify JWT token
  */
-export function verifyToken(token) {
+export function verifyToken(token, expectedType = null) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (expectedType && decoded.type !== expectedType) {
+      return null;
+    }
+    return decoded;
   } catch (err) {
     return null;
   }
