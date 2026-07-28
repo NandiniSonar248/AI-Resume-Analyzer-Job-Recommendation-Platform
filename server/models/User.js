@@ -67,6 +67,25 @@ const userSchema = new mongoose.Schema({
     select: false
   },
   
+  // Refresh Token
+  refreshToken: {
+    type: String,
+    select: false
+  },
+  refreshTokenExpiry: {
+    type: Date,
+    select: false
+  },
+
+  // Account Lockout (brute-force protection)
+  failedLoginAttempts: {
+    type: Number,
+    default: 0
+  },
+  lockoutUntil: {
+    type: Date
+  },
+  
   // Activity Tracking
   createdAt: {
     type: Date,
@@ -160,6 +179,13 @@ userSchema.methods.toJSON = function() {
   const user = this.toObject();
   delete user.password;
   return user;
+};
+
+/**
+ * Check if account is currently locked
+ */
+userSchema.methods.isLocked = function() {
+  return this.lockoutUntil && this.lockoutUntil > Date.now();
 };
 
 export default mongoose.model("User", userSchema);

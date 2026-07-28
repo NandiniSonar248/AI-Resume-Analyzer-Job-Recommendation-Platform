@@ -23,7 +23,7 @@ import express from "express";
 import crypto from "crypto";
 import { body, validationResult } from "express-validator";
 import User from "../models/User.js";
-import { generateToken, authenticate } from "../middleware/auth.js";
+import { generateToken, generateRefreshToken, verifyToken, authenticate } from "../middleware/auth.js";
 import {
   sendVerificationOTP,
   sendPasswordResetEmail,
@@ -142,11 +142,19 @@ router.post("/verify-email", [
     // If already verified, return success with token so user can proceed
     if (user.isVerified) {
       const token = generateToken(user._id);
+      const refreshToken = generateRefreshToken(user._id);
+      
+      const cryptoMod = await import("crypto");
+      user.refreshToken = cryptoMod.default.createHash("sha256").update(refreshToken).digest("hex");
+      user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await user.save();
+
       logger.info(`Already verified user accessed verify-email`);
       return res.json({
         message: "Email already verified! Redirecting to dashboard.",
         alreadyVerified: true,
         token,
+        refreshToken,
         user: {
           id: user._id,
           name: user.name,
@@ -166,6 +174,13 @@ router.post("/verify-email", [
     await user.save();
 
     const token = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+    
+    const cryptoMod = await import("crypto");
+    user.refreshToken = cryptoMod.default.createHash("sha256").update(refreshToken).digest("hex");
+    user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await user.save();
+
     await sendWelcomeEmail(email, user.name);
 
     logger.info(`Email verified`);
@@ -173,6 +188,7 @@ router.post("/verify-email", [
     res.json({
       message: "Email verified successfully! Welcome to JobMatch Pro.",
       token,
+      refreshToken,
       user: {
         id: user._id,
         name: user.name,
@@ -233,13 +249,38 @@ router.post("/login", loginValidation, async (req, res) => {
 
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email }).select("+password +failedLoginAttempts +lockoutUntil +refreshToken");
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    // Check account lockout
+    if (user.isLocked()) {
+      const minutesLeft = Math.ceil((user.lockoutUntil - Date.now()) / 60000);
+      return res.status(423).json({
+        error: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute(s).`,
+        code: "ACCOUNT_LOCKED",
+        lockoutUntil: user.lockoutUntil
+      });
+    }
+
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      // Increment failed attempts
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      
+      // Lock account after 5 failed attempts (30 min lockout)
+      if (user.failedLoginAttempts >= 5) {
+        user.lockoutUntil = new Date(Date.now() + 30 * 60 * 1000);
+        await user.save();
+        logger.warn(`Account locked due to failed attempts: ${email}`);
+        return res.status(423).json({
+          error: "Account locked due to too many failed attempts. Try again in 30 minutes.",
+          code: "ACCOUNT_LOCKED"
+        });
+      }
+
+      await user.save();
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -256,16 +297,27 @@ router.post("/login", loginValidation, async (req, res) => {
       });
     }
 
+    // Successful login — reset lockout state
+    user.failedLoginAttempts = 0;
+    user.lockoutUntil = undefined;
     user.lastLogin = new Date();
+
+    // Generate tokens
+    const accessToken = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Store hashed refresh token in DB
+    const crypto = await import("crypto");
+    user.refreshToken = crypto.default.createHash("sha256").update(refreshToken).digest("hex");
+    user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await user.save();
 
-    const token = generateToken(user._id);
-
-    logger.info(`User logged in`);
+    logger.info(`User logged in: ${email}`);
 
     res.json({
       message: "Login successful!",
-      token,
+      token: accessToken,
+      refreshToken: refreshToken,
       user: {
         id: user._id,
         name: user.name,
@@ -276,6 +328,92 @@ router.post("/login", loginValidation, async (req, res) => {
   } catch (err) {
     logger.error("Login error");
     res.status(500).json({ error: "Login failed. Please try again." });
+  }
+});
+
+/**
+ * POST /api/auth/refresh - Refresh access token
+ * ============================================
+ * Accepts a refresh token, validates it, and issues a NEW access + refresh token pair.
+ * The old refresh token is invalidated (rotation) — each refresh token is single-use.
+ *
+ * WHY ROTATION: If a refresh token is stolen, the moment the legitimate user refreshes,
+ * the attacker's old token becomes invalid. If the attacker refreshes first, the legitimate
+ * user's next refresh fails, signaling a breach.
+ */
+router.post("/refresh", async (req, res) => {
+  try {
+    const { refreshToken: incomingToken } = req.body;
+
+    if (!incomingToken) {
+      return res.status(400).json({ error: "Refresh token is required" });
+    }
+
+    // Verify the refresh token JWT
+    const decoded = verifyToken(incomingToken, "refresh");
+    if (!decoded) {
+      return res.status(401).json({ error: "Invalid or expired refresh token", code: "INVALID_REFRESH" });
+    }
+
+    // Find user and check stored refresh token
+    const cryptoMod = await import("crypto");
+    const hashedToken = cryptoMod.default.createHash("sha256").update(incomingToken).digest("hex");
+
+    const user = await User.findById(decoded.id).select("+refreshToken +refreshTokenExpiry");
+    if (!user || user.refreshToken !== hashedToken) {
+      // Token reuse detected — possible theft. Invalidate all tokens.
+      if (user) {
+        user.refreshToken = undefined;
+        user.refreshTokenExpiry = undefined;
+        await user.save();
+      }
+      return res.status(401).json({
+        error: "Refresh token has already been used. Please login again.",
+        code: "TOKEN_REUSE"
+      });
+    }
+
+    // Check refresh token expiry
+    if (user.refreshTokenExpiry && user.refreshTokenExpiry < Date.now()) {
+      user.refreshToken = undefined;
+      user.refreshTokenExpiry = undefined;
+      await user.save();
+      return res.status(401).json({ error: "Refresh token expired. Please login again.", code: "REFRESH_EXPIRED" });
+    }
+
+    // Rotation — issue new tokens, invalidate old
+    const newAccessToken = generateToken(user._id);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = cryptoMod.default.createHash("sha256").update(newRefreshToken).digest("hex");
+    user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await user.save();
+
+    res.json({
+      token: newAccessToken,
+      refreshToken: newRefreshToken
+    });
+  } catch (err) {
+    logger.error("Token refresh error");
+    res.status(500).json({ error: "Failed to refresh token" });
+  }
+});
+
+/**
+ * POST /api/auth/logout - Logout user
+ * Clears the stored refresh token so it can't be reused.
+ */
+router.post("/logout", authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("+refreshToken");
+    if (user) {
+      user.refreshToken = undefined;
+      user.refreshTokenExpiry = undefined;
+      await user.save();
+    }
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Logout failed" });
   }
 });
 
