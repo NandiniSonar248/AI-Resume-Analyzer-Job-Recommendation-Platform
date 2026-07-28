@@ -20,17 +20,58 @@ const PORT = process.env.PORT || 5000;
 const isDev = process.env.NODE_ENV !== "production";
 
 // Security middleware
-app.use(helmet()); // Security headers
+// ============================================
+// Helmet — Security headers with custom CSP
+// ============================================
+// WHY custom CSP: Default CSP breaks Google Fonts and React inline styles.
+// This CSP allows exactly what the app needs and blocks everything else.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 
-// Rate limiting - prevent abuse
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDev ? 1000 : 100, // Limit each IP (more lenient in dev)
-  message: { error: "Too many requests, please try again later." },
+// ============================================
+// Rate Limiting — per-route configuration
+// ============================================
+// WHY three limiters: Auth routes face brute-force attacks (tight limit),
+// AI routes cost Groq API credits (moderate limit), everything else is cheaper.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many authentication attempts. Please try again in 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false
 });
-app.use("/api/", limiter);
+
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: "AI request limit reached. Please try again in 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: "Too many requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // CORS configuration
 app.use(cors({
@@ -107,13 +148,13 @@ app.get("/", (req, res) => {
   });
 });
 
-// Routes
-app.use("/api/analyze", analyzeRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/jobs", jobRoutes);
-app.use("/api/resume", resumeRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/interview", interviewRoutes);
+// Routes — each with appropriate rate limiter
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/analyze", aiLimiter, analyzeRoutes);
+app.use("/api/resume", aiLimiter, resumeRoutes);
+app.use("/api/interview", aiLimiter, interviewRoutes);
+app.use("/api/chat", aiLimiter, chatRoutes);
+app.use("/api/jobs", generalLimiter, jobRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
