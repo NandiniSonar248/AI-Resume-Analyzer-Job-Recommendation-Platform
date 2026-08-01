@@ -208,6 +208,16 @@ export const searchJobs = async (query, location = "India") => {
   return response.data;
 };
 
+/**
+ * matchJobsByResumeText — Auto-matching endpoint for post-upload flow.
+ * Sends raw resume text to the server; server extracts skills and returns
+ * scored job matches without any user input required.
+ */
+export const matchJobsByResumeText = async (resumeText, location = "India") => {
+  const response = await api.post("/jobs/match-by-resume", { resumeText, location });
+  return response.data;
+};
+
 export const matchJobsWithSkills = async (skills, location = "India") => {
   const response = await api.post("/jobs/match", { skills, location });
   return response.data;

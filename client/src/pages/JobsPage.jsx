@@ -2,11 +2,8 @@ import { useState, useEffect } from "react";
 import { searchJobs, matchJobsWithSkills, getTrendingJobs } from "../api";
 
 const ALL_INDIAN_STATES = [
-  // Union Territories & National
   { name: "All India", value: "India" },
   { name: "Remote", value: "Remote" },
-
-  // States (Alphabetically)
   { name: "Andhra Pradesh", value: "Andhra Pradesh" },
   { name: "Arunachal Pradesh", value: "Arunachal Pradesh" },
   { name: "Assam", value: "Assam" },
@@ -37,21 +34,180 @@ const ALL_INDIAN_STATES = [
   { name: "West Bengal", value: "West Bengal" },
 ];
 
-export default function JobsPage({ userSkills = [] }) {
+/**
+ * SOURCE_COLORS — Per-source badge styling.
+ * Each job card shows which real source it came from so the user
+ * can verify provenance. These map to the `source` field on each job object.
+ */
+const SOURCE_STYLES = {
+  RemoteOK: { bg: "#e0f2fe", color: "#0369a1", icon: "🌍" },
+  Adzuna:   { bg: "#fef3c7", color: "#92400e", icon: "🔷" },
+  JSearch:  { bg: "#f0fdf4", color: "#166534", icon: "🔍" },
+};
+
+/**
+ * JobCard — Individual job listing card.
+ *
+ * The Apply button:
+ * - Is always an <a href={job.url} target="_blank" rel="noopener noreferrer">
+ * - Opens the real source site (LinkedIn, Indeed, Glassdoor, employer site)
+ *   in a new tab
+ * - Never submits an application in-platform. This is intentional and matches
+ *   how all real aggregators (Indeed, Glassdoor, LinkedIn) work.
+ *
+ * Why? LinkedIn/Indeed/Glassdoor/Naukri don't expose job application submission
+ * APIs to third parties. Their application flows require platform authentication
+ * and their own ATS integrations. Even enterprise products get read-only access.
+ * The redirect-to-source pattern is the industry standard — not a limitation.
+ */
+function JobCard({ job, isAutoMatched }) {
+  const sourceStyle = SOURCE_STYLES[job.source] || { bg: "#f5f5f5", color: "#333", icon: "💼" };
+
+  return (
+    <div className={`job-card ${isAutoMatched ? "job-card--matched" : ""}`}>
+      <div className="job-header">
+        <div className="job-logo">
+          {job.logo ? (
+            <img
+              src={job.logo}
+              alt={job.company}
+              onError={(e) => { e.target.style.display = "none"; }}
+            />
+          ) : (
+            <span className="job-logo-placeholder">
+              {job.company?.charAt(0)?.toUpperCase() || "J"}
+            </span>
+          )}
+        </div>
+        <div className="job-main">
+          <h3 className="job-title">{job.title}</h3>
+          <p className="job-company">{job.company}</p>
+        </div>
+        {/* Source badge — shows which real platform this listing is from */}
+        <div
+          className="job-source-badge"
+          style={{ background: sourceStyle.bg, color: sourceStyle.color }}
+          title={`Listed on ${job.source}`}
+        >
+          <span>{sourceStyle.icon}</span>
+          <span>{job.source}</span>
+        </div>
+      </div>
+
+      <div className="job-details">
+        <span className="job-location">📍 {job.location}</span>
+        {job.salary && <span className="job-salary">💰 {job.salary}</span>}
+        {job.isRemote && <span className="job-remote">🌐 Remote</span>}
+      </div>
+
+      {/* Match score bar — shown for auto-matched jobs */}
+      {job.matchScore !== undefined && (
+        <div className="job-match">
+          <div className="match-bar">
+            <div
+              className="match-fill"
+              style={{ width: `${job.matchScore}%` }}
+            />
+          </div>
+          <span className="match-score">{job.matchScore}% Match</span>
+        </div>
+      )}
+
+      {/* Skill tags */}
+      {job.tags?.length > 0 && (
+        <div className="job-tags">
+          {job.tags.slice(0, 6).map((tag, i) => (
+            <span key={i} className="job-tag">{tag}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Truncated description */}
+      {job.description && (
+        <p className="job-description">{job.description}</p>
+      )}
+
+      <div className="job-actions">
+        {/*
+          APPLY BUTTON — REDIRECT PATTERN (industry standard)
+          Opens the real source URL in a new tab.
+          We use rel="noopener noreferrer" for security:
+          - noopener: prevents the new tab from accessing window.opener
+          - noreferrer: doesn't send Referer header (privacy)
+        */}
+        <a
+          href={job.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="apply-btn"
+          id={`apply-${job.id}`}
+        >
+          Apply on {job.source} →
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * EmptyState — Shown when a search returns 0 real results.
+ * The message is honest: we say "no live listings found right now"
+ * and suggest alternatives. We never fill this space with synthetic data.
+ */
+function EmptyState({ query, isAutoMatch }) {
+  return (
+    <div className="no-jobs">
+      <span className="no-jobs-icon">🔎</span>
+      <h3>No live listings found right now</h3>
+      {isAutoMatch ? (
+        <p>
+          No real-time listings matched your resume skills at this moment.
+          Try a manual search below, or check back later — job listings update frequently.
+        </p>
+      ) : (
+        <p>
+          {query
+            ? `No live listings found for "${query}". Try different keywords, broaden your location, or check back later.`
+            : "Search for jobs using the form above to see live listings."}
+        </p>
+      )}
+      <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.5rem" }}>
+        Sources searched: RemoteOK · Adzuna · JSearch (Google for Jobs)
+      </p>
+    </div>
+  );
+}
+
+/**
+ * JobsPage — Main job search and matching interface.
+ *
+ * Props:
+ *   userSkills      — skills from ATS analysis (for manual matched tab)
+ *   autoMatchedJobs — jobs auto-matched after resume upload (from Dashboard)
+ *   autoMatchLoading — true while auto-matching is in progress
+ */
+export default function JobsPage({ userSkills = [], autoMatchedJobs = [], autoMatchLoading = false }) {
   const [jobs, setJobs] = useState([]);
   const [trending, setTrending] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [location, setLocation] = useState("India");
-  const [activeTab, setActiveTab] = useState("search"); // search, matched, trending
+  const [activeTab, setActiveTab] = useState(
+    // If auto-matched jobs arrive, start on that tab
+    autoMatchedJobs.length > 0 ? "matched" : "trending"
+  );
   const [error, setError] = useState(null);
+
+  // When autoMatchedJobs arrives (from Dashboard post-upload), switch tab
+  useEffect(() => {
+    if (autoMatchedJobs.length > 0) {
+      setActiveTab("matched");
+    }
+  }, [autoMatchedJobs]);
 
   useEffect(() => {
     loadTrending();
-    if (userSkills.length > 0) {
-      loadMatchedJobs();
-    }
-  }, [userSkills]);
+  }, []);
 
   const loadTrending = async () => {
     try {
@@ -65,12 +221,13 @@ export default function JobsPage({ userSkills = [] }) {
   const loadMatchedJobs = async () => {
     if (userSkills.length === 0) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await matchJobsWithSkills(userSkills, location);
       setJobs(data.jobs || []);
-      setActiveTab("matched");
+      setActiveTab("search"); // Use search tab for manual skill match
     } catch (err) {
-      setError("Failed to match jobs");
+      setError("Failed to match jobs. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -79,11 +236,11 @@ export default function JobsPage({ userSkills = [] }) {
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    
+
     setLoading(true);
     setError(null);
     try {
-      const data = await searchJobs(searchQuery, location);
+      const data = await searchJobs(searchQuery.trim(), location);
       setJobs(data.jobs || []);
       setActiveTab("search");
     } catch (err) {
@@ -94,32 +251,39 @@ export default function JobsPage({ userSkills = [] }) {
   };
 
   const handleTrendingClick = async (category) => {
-    setSearchQuery(category.name);
+    const query = category.searchQuery || category.name;
+    setSearchQuery(query);
     setLoading(true);
+    setError(null);
     try {
-      const data = await searchJobs(category.name, location);
+      const data = await searchJobs(query, location);
       setJobs(data.jobs || []);
       setActiveTab("search");
     } catch (err) {
-      setError("Failed to search jobs");
+      setError("Failed to search jobs. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+
+  // Determine which jobs list to show in the listings area
+  const displayJobs = activeTab === "matched" ? autoMatchedJobs : jobs;
+  const isAutoMatchTab = activeTab === "matched";
 
   return (
     <div className="jobs-page">
       {/* Search Header */}
       <div className="jobs-header">
         <h2>🔍 Find Your Dream Job</h2>
-        <p>Search from thousands of jobs across top portals</p>
-        
+        <p>Live listings from RemoteOK, Adzuna, and JSearch (Google for Jobs / LinkedIn / Indeed / Glassdoor)</p>
+
         <form onSubmit={handleSearch} className="jobs-search-form">
           <div className="search-inputs">
             <div className="search-field">
               <span className="search-icon">💼</span>
               <input
                 type="text"
+                id="job-search-input"
                 placeholder="Job title, skills, or company..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -127,15 +291,24 @@ export default function JobsPage({ userSkills = [] }) {
             </div>
             <div className="search-field location">
               <span className="search-icon">📍</span>
-              <select value={location} onChange={(e) => setLocation(e.target.value)}>
-                {ALL_INDIAN_STATES.map(state => (
+              <select
+                id="job-location-select"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              >
+                {ALL_INDIAN_STATES.map((state) => (
                   <option key={state.value} value={state.value}>
                     {state.name}
                   </option>
                 ))}
               </select>
             </div>
-            <button type="submit" className="search-btn" disabled={loading}>
+            <button
+              type="submit"
+              id="job-search-btn"
+              className="search-btn"
+              disabled={loading}
+            >
               {loading ? "Searching..." : "Search Jobs"}
             </button>
           </div>
@@ -144,24 +317,29 @@ export default function JobsPage({ userSkills = [] }) {
 
       {/* Tabs */}
       <div className="jobs-tabs">
-        <button 
+        <button
           className={`tab ${activeTab === "trending" ? "active" : ""}`}
           onClick={() => setActiveTab("trending")}
         >
           🔥 Trending
         </button>
-        <button 
+        <button
           className={`tab ${activeTab === "search" ? "active" : ""}`}
           onClick={() => setActiveTab("search")}
         >
           🔍 Search Results
         </button>
-        {userSkills.length > 0 && (
-          <button 
+
+        {/* Auto-matched tab — appears after resume upload */}
+        {(autoMatchedJobs.length > 0 || autoMatchLoading) && (
+          <button
             className={`tab ${activeTab === "matched" ? "active" : ""}`}
-            onClick={() => { setActiveTab("matched"); loadMatchedJobs(); }}
+            onClick={() => setActiveTab("matched")}
           >
-            🎯 Matched for You
+            🎯 Matched for Your Resume
+            {autoMatchedJobs.length > 0 && (
+              <span className="tab-count">{autoMatchedJobs.length}</span>
+            )}
           </button>
         )}
       </div>
@@ -172,17 +350,19 @@ export default function JobsPage({ userSkills = [] }) {
       {activeTab === "trending" && (
         <div className="trending-section">
           <h3>📈 Trending Job Categories</h3>
+          <p className="trending-note">Click any category to search for live listings</p>
           <div className="trending-grid">
             {trending.map((cat) => (
-              <div 
-                key={cat.id} 
+              <div
+                key={cat.id}
                 className="trending-card"
                 onClick={() => handleTrendingClick(cat)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleTrendingClick(cat)}
               >
                 <div className="trending-icon">{cat.icon}</div>
                 <h4>{cat.name}</h4>
-                <p className="trending-count">{cat.count}</p>
-                <span className="trending-growth">{cat.growth}</span>
                 <div className="trending-skills">
                   {cat.skills?.slice(0, 3).map((skill, i) => (
                     <span key={i} className="skill-chip">{skill}</span>
@@ -194,88 +374,40 @@ export default function JobsPage({ userSkills = [] }) {
         </div>
       )}
 
-      {/* Job Listings */}
-      {(activeTab === "search" || activeTab === "matched") && (
+      {/* Auto-matched jobs banner — shown while matching is in progress */}
+      {activeTab === "matched" && autoMatchLoading && (
+        <div className="loading-jobs">
+          <div className="spinner" />
+          <p>Matching live jobs to your resume skills...</p>
+        </div>
+      )}
+
+      {/* Job Listings — for Search Results and Matched tabs */}
+      {(activeTab === "search" || activeTab === "matched") && !autoMatchLoading && (
         <div className="jobs-list">
           {loading ? (
             <div className="loading-jobs">
-              <div className="spinner"></div>
-              <p>Finding the best jobs for you...</p>
+              <div className="spinner" />
+              <p>Finding live listings from RemoteOK, Adzuna, and JSearch...</p>
             </div>
-          ) : jobs.length === 0 ? (
-            <div className="no-jobs">
-              <span className="no-jobs-icon">🔍</span>
-              <h3>No jobs found</h3>
-              <p>Try searching with different keywords or check trending categories</p>
-            </div>
+          ) : displayJobs.length === 0 ? (
+            <EmptyState
+              query={searchQuery}
+              isAutoMatch={isAutoMatchTab}
+            />
           ) : (
             <>
               <div className="jobs-count">
-                Found <strong>{jobs.length}</strong> jobs
-                {activeTab === "matched" && " matched to your skills"}
+                Found <strong>{displayJobs.length}</strong> live listings
+                {isAutoMatchTab && " matched to your resume"}
+                {" "}<span className="jobs-count-note">(from RemoteOK · Adzuna · JSearch)</span>
               </div>
-              {jobs.map((job) => (
-                <div key={job.id} className="job-card">
-                  <div className="job-header">
-                    <div className="job-logo">
-                      {job.logo ? (
-                        <img src={job.logo} alt={job.company} />
-                      ) : (
-                        <span className="job-logo-placeholder">
-                          {job.company?.charAt(0) || "J"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="job-main">
-                      <h3 className="job-title">{job.title}</h3>
-                      <p className="job-company">{job.company}</p>
-                    </div>
-                    <div className="job-source">
-                      <span className="source-icon">{job.sourceIcon}</span>
-                      <span className="source-name">{job.source}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="job-details">
-                    <span className="job-location">📍 {job.location}</span>
-                    <span className="job-salary">💰 {job.salary}</span>
-                    {job.isRemote && <span className="job-remote">🌍 Remote</span>}
-                  </div>
-
-                  {job.matchScore !== undefined && (
-                    <div className="job-match">
-                      <div className="match-bar">
-                        <div 
-                          className="match-fill" 
-                          style={{ width: `${job.matchScore}%` }}
-                        ></div>
-                      </div>
-                      <span className="match-score">{job.matchScore}% Match</span>
-                    </div>
-                  )}
-
-                  {job.tags?.length > 0 && (
-                    <div className="job-tags">
-                      {job.tags.slice(0, 5).map((tag, i) => (
-                        <span key={i} className="job-tag">{tag}</span>
-                      ))}
-                    </div>
-                  )}
-
-                  <p className="job-description">{job.description}</p>
-
-                  <div className="job-actions">
-                    <a 
-                      href={job.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="apply-btn"
-                    >
-                      Apply Now →
-                    </a>
-                    <button className="save-btn">💾 Save</button>
-                  </div>
-                </div>
+              {displayJobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  isAutoMatched={isAutoMatchTab}
+                />
               ))}
             </>
           )}

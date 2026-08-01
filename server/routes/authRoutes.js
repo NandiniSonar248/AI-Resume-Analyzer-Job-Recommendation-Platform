@@ -145,7 +145,7 @@ router.post("/verify-email", [
       const refreshToken = generateRefreshToken(user._id);
       
       const cryptoMod = await import("crypto");
-      user.refreshToken = cryptoMod.default.createHash("sha256").update(refreshToken).digest("hex");
+      user.refreshToken = cryptoMod.createHash("sha256").update(refreshToken).digest("hex");
       user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await user.save();
 
@@ -177,7 +177,7 @@ router.post("/verify-email", [
     const refreshToken = generateRefreshToken(user._id);
     
     const cryptoMod = await import("crypto");
-    user.refreshToken = cryptoMod.default.createHash("sha256").update(refreshToken).digest("hex");
+    user.refreshToken = cryptoMod.createHash("sha256").update(refreshToken).digest("hex");
     user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await user.save();
 
@@ -307,8 +307,7 @@ router.post("/login", loginValidation, async (req, res) => {
     const refreshToken = generateRefreshToken(user._id);
 
     // Store hashed refresh token in DB
-    const crypto = await import("crypto");
-    user.refreshToken = crypto.default.createHash("sha256").update(refreshToken).digest("hex");
+    user.refreshToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
     user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await user.save();
 
@@ -326,7 +325,7 @@ router.post("/login", loginValidation, async (req, res) => {
       }
     });
   } catch (err) {
-    logger.error("Login error");
+    logger.error("Login error", err);
     res.status(500).json({ error: "Login failed. Please try again." });
   }
 });
@@ -357,7 +356,7 @@ router.post("/refresh", async (req, res) => {
 
     // Find user and check stored refresh token
     const cryptoMod = await import("crypto");
-    const hashedToken = cryptoMod.default.createHash("sha256").update(incomingToken).digest("hex");
+    const hashedToken = cryptoMod.createHash("sha256").update(incomingToken).digest("hex");
 
     const user = await User.findById(decoded.id).select("+refreshToken +refreshTokenExpiry");
     if (!user || user.refreshToken !== hashedToken) {
@@ -385,7 +384,7 @@ router.post("/refresh", async (req, res) => {
     const newAccessToken = generateToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
 
-    user.refreshToken = cryptoMod.default.createHash("sha256").update(newRefreshToken).digest("hex");
+    user.refreshToken = cryptoMod.createHash("sha256").update(newRefreshToken).digest("hex");
     user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await user.save();
 

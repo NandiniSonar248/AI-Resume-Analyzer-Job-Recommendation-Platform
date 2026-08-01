@@ -1121,6 +1121,58 @@ input:focus, select:focus {
   flex-shrink: 0;
 }
 
+/* New source badge — colored per source for provenance visibility */
+.job-source-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+/* Highlighted card for auto-matched results */
+.job-card--matched {
+  border-left: 3px solid var(--primary);
+}
+
+.job-card--matched:hover {
+  border-left-color: var(--primary-dark);
+}
+
+/* Tab count badge */
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--primary);
+  color: white;
+  border-radius: var(--radius-full);
+}
+
+/* Subdued note text in jobs count */
+.jobs-count-note {
+  font-size: 12px;
+  color: var(--gray-400);
+  font-weight: 400;
+}
+
+/* Trending category note */
+.trending-note {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-bottom: 16px;
+}
+
 .job-details {
   display: flex;
   flex-wrap: wrap;

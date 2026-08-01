@@ -24,7 +24,7 @@ import ResumeForm from "../components/ResumeForm";
 import ResultPanel from "../components/ResultPanel";
 import JobsPage from "./JobsPage";
 import ResumeBuilder from "./ResumeBuilder";
-import { getAnalysisHistory } from "../api";
+import { getAnalysisHistory, matchJobsByResumeText } from "../api";
 import toast from "react-hot-toast";
 
 export default function Dashboard() {
@@ -35,6 +35,8 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [userSkills, setUserSkills] = useState([]);
+  const [autoMatchedJobs, setAutoMatchedJobs] = useState([]);
+  const [autoMatchLoading, setAutoMatchLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Redirect if not logged in and not guest, or refresh user if token exists
@@ -56,10 +58,41 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // Extract skills when analysis is done
+  // Extract skills + trigger auto job matching when analysis completes
   useEffect(() => {
-    if (data?.matchedKeywords) {
+    if (!data) return;
+
+    // Update skills list from matched keywords
+    if (data.matchedKeywords?.length > 0) {
       setUserSkills(prev => [...new Set([...prev, ...data.matchedKeywords])]);
+    }
+
+    // Auto-trigger job matching using the resume text returned by the analysis
+    // Flow: upload → ATS analysis returns resumeText → we send it to /jobs/match-by-resume
+    // → server extracts skills → returns scored real job matches → shown automatically
+    if (data.resumeText && data.resumeText.trim().length > 50) {
+      setAutoMatchLoading(true);
+      setAutoMatchedJobs([]);
+
+      matchJobsByResumeText(data.resumeText)
+        .then((result) => {
+          if (result.jobs && result.jobs.length > 0) {
+            setAutoMatchedJobs(result.jobs);
+            // Auto-switch to Jobs tab so user sees results immediately
+            setActiveTab("jobs");
+            toast.success(
+              `Found ${result.jobs.length} real jobs matched to your resume!`,
+              { icon: "🎯", duration: 4000 }
+            );
+          }
+        })
+        .catch((err) => {
+          // Silent failure — job matching is non-critical
+          console.warn("Auto job matching failed:", err.message);
+        })
+        .finally(() => {
+          setAutoMatchLoading(false);
+        });
     }
   }, [data]);
 
@@ -249,7 +282,11 @@ export default function Dashboard() {
 
         {/* Jobs Tab */}
         {activeTab === "jobs" && (
-          <JobsPage userSkills={userSkills} />
+          <JobsPage
+            userSkills={userSkills}
+            autoMatchedJobs={autoMatchedJobs}
+            autoMatchLoading={autoMatchLoading}
+          />
         )}
 
         {/* Resume Builder Tab */}
