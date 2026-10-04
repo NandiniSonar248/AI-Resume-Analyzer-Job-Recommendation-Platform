@@ -208,3 +208,59 @@ export const validateChatMessage = [
     .stripLow({ keep_new_lines: true }),
   handleValidationErrors
 ];
+
+/**
+ * Validation for POST /api/resume/tailor (Phase 3)
+ */
+export const validateResumeTailor = [
+  body("resumeText")
+    .trim()
+    .notEmpty().withMessage("Resume text is required")
+    .isLength({ min: 50 }).withMessage("Resume text must be at least 50 characters")
+    .isLength({ max: 50000 }).withMessage("Resume text must be under 50,000 characters")
+    .stripLow({ keep_new_lines: true }),
+  body("jobDescription")
+    .trim()
+    .notEmpty().withMessage("Job description is required")
+    .isLength({ min: 50 }).withMessage("Job description must be at least 50 characters")
+    .isLength({ max: 50000 }).withMessage("Job description must be under 50,000 characters")
+    .stripLow({ keep_new_lines: true }),
+  handleValidationErrors
+];
+
+/**
+ * Validation for POST /api/resume/cover-letter (Phase 3)
+ */
+export const validateCoverLetter = [
+  body("resumeText")
+    .trim()
+    .notEmpty().withMessage("Resume text is required")
+    .isLength({ min: 50 }).withMessage("Resume text must be at least 50 characters")
+    .isLength({ max: 50000 }).withMessage("Resume text must be under 50,000 characters")
+    .stripLow({ keep_new_lines: true }),
+  body("jobDescription")
+    .trim()
+    .notEmpty().withMessage("Job description is required")
+    .isLength({ min: 50 }).withMessage("Job description must be at least 50 characters")
+    .isLength({ max: 50000 }).withMessage("Job description must be under 50,000 characters")
+    .stripLow({ keep_new_lines: true }),
+  body("userName").optional().trim().isLength({ max: 100 }),
+  body("companyName").optional().trim().isLength({ max: 200 }),
+  body("roleName").optional().trim().isLength({ max: 200 }),
+  handleValidationErrors
+];
+
+/**
+ * Validation for POST /api/resume/skill-gap (Phase 3)
+ */
+export const validateSkillGap = [
+  body("missingSkills")
+    .isArray().withMessage("missingSkills must be an array")
+    .custom(arr => arr.length <= 30).withMessage("Too many skills provided"),
+  body("jobDescription")
+    .optional()
+    .trim()
+    .isLength({ max: 50000 }).withMessage("Job description must be under 50,000 characters")
+    .stripLow({ keep_new_lines: true }),
+  handleValidationErrors
+];

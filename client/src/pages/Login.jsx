@@ -39,10 +39,6 @@ export default function Login() {
     if (result.success) {
       toast.success("Welcome back!");
       navigate("/dashboard");
-    } else if (result.requiresVerification) {
-      // Redirect to verify email page
-      toast("Please verify your email first");
-      navigate("/verify-email", { state: { email } });
     }
   };
 

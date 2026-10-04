@@ -32,6 +32,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import InterviewPrep from "./pages/InterviewPrep";
+import ApplicationTracker from "./pages/ApplicationTracker";
 
 // Components
 import AIChat from "./components/AIChat.jsx";
@@ -103,6 +104,9 @@ function AppRoutes() {
       } />
       <Route path="/interview" element={
         <ProtectedRoute><InterviewPrep /></ProtectedRoute>
+      } />
+      <Route path="/tracker" element={
+        <ProtectedRoute><ApplicationTracker /></ProtectedRoute>
       } />
       
       {/* Catch all - redirect to home */}

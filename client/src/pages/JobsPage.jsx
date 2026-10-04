@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { searchJobs, matchJobsWithSkills, getTrendingJobs } from "../api";
+import { searchJobs, matchJobsWithSkills, getTrendingJobs, createApplication } from "../api";
+import toast from "react-hot-toast";
 
 const ALL_INDIAN_STATES = [
   { name: "All India", value: "India" },
@@ -62,6 +63,35 @@ const SOURCE_STYLES = {
  */
 function JobCard({ job, isAutoMatched }) {
   const sourceStyle = SOURCE_STYLES[job.source] || { bg: "#f5f5f5", color: "#333", icon: "💼" };
+  const [tracked, setTracked] = useState(false);
+  const [tracking, setTracking] = useState(false);
+
+  const handleTrack = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.error("Please login to track applications");
+      return;
+    }
+
+    setTracking(true);
+    try {
+      await createApplication({
+        jobTitle: job.title || "Job Title",
+        company: job.company || "Company",
+        location: job.location || "Remote",
+        salary: job.salary || "",
+        source: job.source || "Aggregator",
+        sourceUrl: job.url || "",
+        status: "applied"
+      });
+      setTracked(true);
+      toast.success(`Tracked "${job.title}" in Application Tracker!`, { icon: "📌" });
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to track application");
+    } finally {
+      setTracking(false);
+    }
+  };
 
   return (
     <div className={`job-card ${isAutoMatched ? "job-card--matched" : ""}`}>
@@ -131,9 +161,6 @@ function JobCard({ job, isAutoMatched }) {
         {/*
           APPLY BUTTON — REDIRECT PATTERN (industry standard)
           Opens the real source URL in a new tab.
-          We use rel="noopener noreferrer" for security:
-          - noopener: prevents the new tab from accessing window.opener
-          - noreferrer: doesn't send Referer header (privacy)
         */}
         <a
           href={job.url}
@@ -144,6 +171,16 @@ function JobCard({ job, isAutoMatched }) {
         >
           Apply on {job.source} →
         </a>
+
+        <button
+          type="button"
+          onClick={handleTrack}
+          disabled={tracking || tracked}
+          className={`btn-track-job ${tracked ? "is-tracked" : ""}`}
+          title={tracked ? "Already tracked in your pipeline" : "Add to Application Tracker Kanban"}
+        >
+          {tracked ? "✓ Tracked" : tracking ? "Saving..." : "📌 Track Job"}
+        </button>
       </div>
     </div>
   );

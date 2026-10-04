@@ -40,12 +40,25 @@ export async function chatWithAI(userId, userMessage) {
   const contextMessages = history.slice(-10);
 
   try {
-    const response = await Promise.race([
-      groqClient.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: `You are a professional career coach and resume expert assistant. Help users with:
+    const candidateModels = [
+      process.env.GROQ_MODEL,
+      "llama-3.1-8b-instant",
+      "llama-3.3-70b-versatile",
+      "llama3-70b-8192",
+      "llama3-8b-8192"
+    ].filter(Boolean);
+
+    let response = null;
+    let lastError = null;
+
+    for (const model of candidateModels) {
+      try {
+        response = await Promise.race([
+          groqClient.chat.completions.create({
+            messages: [
+              {
+                role: "system",
+                content: `You are a professional career coach and resume expert assistant. Help users with:
 1. Resume improvement tips
 2. Job search strategies
 3. Interview preparation
@@ -61,15 +74,26 @@ RULES:
 - Be encouraging and positive
 - Keep responses under 300 words
 - Format with bullet points for clarity`
-          },
-          ...contextMessages
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.7,
-        max_tokens: 500
-      }),
-      timeout(15000) // 15 second timeout
-    ]);
+              },
+              ...contextMessages
+            ],
+            model: model,
+            temperature: 0.7,
+            max_tokens: 500
+          }),
+          timeout(15000) // 15 second timeout
+        ]);
+        if (response) break;
+      } catch (err) {
+        lastError = err;
+        if (err.status === 404 || err.message?.includes("model") || err.code === "model_not_found") {
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!response && lastError) throw lastError;
 
     const assistantMessage = response.choices[0]?.message?.content || "I couldn't process that. Please try again.";
 

@@ -1,0 +1,101 @@
+# ==============================================================================
+# AI Job Matcher Pro — Docker Compose (Production)
+# ==============================================================================
+# Services:
+#   mongo   — MongoDB 7 database
+#   server  — Node.js Express + Socket.io API (port 5000)
+#   client  — React/Vite built app served by nginx (port 80)
+#
+# Usage:
+#   docker-compose up -d --build       # Start all services (detached)
+#   docker-compose logs -f server      # Tail server logs
+#   docker-compose down                # Stop all services
+#   docker-compose down -v             # Stop & delete volumes (DATA LOSS!)
+# ==============================================================================
+
+version: "3.9"
+
+services:
+  # ── MongoDB ──────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0-jammy
+    container_name: ats_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ats_ai_db
+    volumes:
+      # Named volume persists data across container restarts
+      - mongo_data:/data/db
+    ports:
+      # Only expose to localhost — do NOT expose 27017 publicly in production
+      - "127.0.0.1:27017:27017"
+    networks:
+      - ats_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── API Server ───────────────────────────────────────────────────────────────
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ats_server
+    restart: unless-stopped
+    # Load env vars from server/.env (create from server/.env.example)
+    env_file:
+      - ./server/.env
+    environment:
+      # Override MONGO_URI to use the Docker container hostname "mongo"
+      MONGO_URI: mongodb://mongo:27017/ats_ai_db
+      # Override FRONTEND_URL for container networking
+      FRONTEND_URL: http://localhost
+      NODE_ENV: production
+    ports:
+      # Only expose to localhost — nginx proxies /api/* externally
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - ats_network
+    volumes:
+      # Mount uploads directory so uploaded resumes persist across restarts
+      - resume_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── React Client (nginx) ─────────────────────────────────────────────────────
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: ats_client
+    restart: unless-stopped
+    ports:
+      # Expose port 80 publicly — this is the app entry point
+      - "80:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - ats_network
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  mongo_data:
+    driver: local
+  resume_uploads:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  ats_network:
+    driver: bridge

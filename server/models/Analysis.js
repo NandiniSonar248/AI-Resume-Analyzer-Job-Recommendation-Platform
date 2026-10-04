@@ -40,7 +40,36 @@ const schema = new mongoose.Schema({
   matchedKeywords: [String],
   missingKeywords: [String],
   
-  // AI-generated suggestions
+  // Phase 2: Multi-Factor Sub-Scores
+  subScores: {
+    keywordMatch: { type: mongoose.Schema.Types.Mixed },
+    skillsCoverage: { type: mongoose.Schema.Types.Mixed },
+    experienceMatch: { type: mongoose.Schema.Types.Mixed },
+    formattingCompatibility: { type: mongoose.Schema.Types.Mixed }
+  },
+
+  // Phase 2: Parseability Check Results
+  parseability: {
+    score: Number,
+    isCompatible: Boolean,
+    rating: String,
+    issues: [{ type: mongoose.Schema.Types.Mixed }],
+    summary: { type: mongoose.Schema.Types.Mixed }
+  },
+
+  // Phase 2: Sentence-Level Explainability
+  sentenceHighlights: [{ type: mongoose.Schema.Types.Mixed }],
+
+  // Qualitative AI Assessment (separate layer)
+  aiAssessment: {
+    executiveSummary: String,
+    keyStrengths: [String],
+    criticalGaps: [String],
+    actionableTips: [String],
+    recruiterPerspective: String
+  },
+
+  // AI-generated suggestions (backward compatibility)
   aiSuggestions: String,
   aiPowered: {
     type: Boolean,

@@ -178,11 +178,11 @@ function normalizeJob(raw, countryCode) {
  * @returns {Promise<NormalizedJob[]>}
  */
 export async function fetchAdzunaJobs(query, location = "India", page = 1) {
-  const appId = process.env.ADZUNA_APP_ID;
-  const apiKey = process.env.ADZUNA_API_KEY;
+  const appId = process.env.ADZUNA_APP_ID?.trim();
+  const apiKey = (process.env.ADZUNA_API_KEY || process.env.ADZUNA_APP_KEY)?.trim();
 
   if (!appId || !apiKey) {
-    console.warn("[Adzuna] Missing ADZUNA_APP_ID or ADZUNA_API_KEY in .env — skipping");
+    console.warn("[Adzuna] Missing ADZUNA_APP_ID or ADZUNA_APP_KEY in .env — skipping");
     return [];
   }
 
@@ -195,7 +195,6 @@ export async function fetchAdzunaJobs(query, location = "India", page = 1) {
     what: query,                     // Job title / skills keywords
     results_per_page: "15",          // Max allowed on free tier per request
     sort_by: "relevance",            // "relevance" | "date" | "salary"
-    content_type: "application/json",
   });
 
   // Add location filter only when it's a specific city/region, not just "India"

@@ -12,6 +12,39 @@ const client = new Groq({
 });
 
 /**
+ * Helper to call Groq with model fallback
+ */
+async function callGroqChat(messages, max_tokens = 1024, temperature = 0.6) {
+  const candidateModels = [
+    process.env.GROQ_MODEL,
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "llama3-70b-8192",
+    "llama3-8b-8192"
+  ].filter(Boolean);
+
+  let lastError = null;
+  for (const model of candidateModels) {
+    try {
+      const completion = await client.chat.completions.create({
+        messages,
+        model,
+        max_tokens,
+        temperature
+      });
+      return completion.choices[0]?.message?.content || "";
+    } catch (err) {
+      lastError = err;
+      if (err.status === 404 || err.message?.includes("model") || err.code === "model_not_found") {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Generate 8 interview questions based on job description and resume
  * @param {string} jobDescription - Job description/requirements
  * @param {string} resume - User's resume text
@@ -46,18 +79,9 @@ Requirements:
 
 Return ONLY the JSON array, no additional text.`;
 
-    const message = await client.messages.create({
-      model: "llama-3.3-70b-versatile",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
-
-    const response = message.content[0].text;
+    const response = await callGroqChat([
+      { role: "user", content: prompt }
+    ], 1024, 0.5);
 
     // Parse JSON - handle multiple JSON objects separated by newlines
     const jsonMatches = response.match(/\[.*?\]/gs);
@@ -139,18 +163,9 @@ Format your response as JSON:
 
 Return ONLY the JSON object, no additional text.`;
 
-    const message = await client.messages.create({
-      model: "llama-3.3-70b-versatile",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
-
-    const response = message.content[0].text;
+    const response = await callGroqChat([
+      { role: "user", content: prompt }
+    ], 1024, 0.4);
 
     // Extract JSON from response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -191,18 +206,11 @@ Provide a professional, detailed answer (200-300 words) that:
 
 Return ONLY the sample answer, no additional text.`;
 
-    const message = await client.messages.create({
-      model: "llama-3.3-70b-versatile",
-      max_tokens: 512,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
+    const response = await callGroqChat([
+      { role: "user", content: prompt }
+    ], 512, 0.6);
 
-    return message.content[0].text;
+    return response;
   } catch (error) {
     console.error("Error generating sample answer:", error);
     throw new Error(`Failed to generate sample answer: ${error.message}`);

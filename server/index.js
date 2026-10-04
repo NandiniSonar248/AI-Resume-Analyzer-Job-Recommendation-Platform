@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
@@ -12,6 +13,8 @@ import jobRoutes from "./routes/jobRoutes.js";
 import resumeRoutes from "./routes/resumeRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import interviewRoutes from "./routes/interviewRoutes.js";
+import applicationRoutes from "./routes/applicationRoutes.js";
+import { initInterviewSocket } from "./sockets/interviewSocket.js";
 import logger from "./utils/logger.js";
 
 dotenv.config();
@@ -23,8 +26,8 @@ const isDev = process.env.NODE_ENV !== "production";
 // ============================================
 // Helmet — Security headers with custom CSP
 // ============================================
-// WHY custom CSP: Default CSP breaks Google Fonts and React inline styles.
-// This CSP allows exactly what the app needs and blocks everything else.
+// WHY custom CSP: Default CSP breaks Google Fonts, React inline styles,
+// and WebSocket connections. ws: and wss: are allowed for Socket.io.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -33,7 +36,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "ws:", "wss:"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -155,6 +158,7 @@ app.use("/api/resume", aiLimiter, resumeRoutes);
 app.use("/api/interview", aiLimiter, interviewRoutes);
 app.use("/api/chat", aiLimiter, chatRoutes);
 app.use("/api/jobs", generalLimiter, jobRoutes);
+app.use("/api/applications", generalLimiter, applicationRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
@@ -175,11 +179,15 @@ app.use((err, req, res, next) => {
 const startServer = async () => {
   await connectDB();
   
-  app.listen(PORT, () => {
+  const server = http.createServer(app);
+  initInterviewSocket(server, process.env.FRONTEND_URL || "http://localhost:5173");
+
+  server.listen(PORT, () => {
     logger.info(`🚀 Server running on http://localhost:${PORT}`);
+    logger.info(`🎙️ WebSocket ready for live mock interviews`);
     logger.info(`📊 API endpoint: http://localhost:${PORT}/api/analyze`);
     logger.info(`🔐 Auth endpoint: http://localhost:${PORT}/api/auth`);
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server with Socket.io running on http://localhost:${PORT}`);
   });
 };
 

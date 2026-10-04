@@ -121,14 +121,25 @@ ${missedTop.map((skill, i) => {
 }
 
 /**
- * Call Groq API with improved settings
+ * Call Groq API with automatic model fallback
  */
 async function callGroqAPI(prompt) {
-  const completion = await groqClient.chat.completions.create({
-    messages: [
-      {
-        role: "system",
-        content: `You are an expert career coach and ATS specialist. Your job is to help people improve their resumes.
+  const candidateModels = [
+    process.env.GROQ_MODEL,
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "llama3-70b-8192",
+    "llama3-8b-8192"
+  ].filter(Boolean);
+
+  let lastError = null;
+  for (const model of candidateModels) {
+    try {
+      const completion = await groqClient.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert career coach and ATS specialist. Your job is to help people improve their resumes.
 
 RULES:
 1. Write NATURALLY and PROFESSIONALLY - no awkward phrases like "Experienced with ai"
@@ -143,18 +154,28 @@ AVOID:
 - Unnatural phrases or broken English
 - Generic advice
 - Too much explanation (be concise)`
-      },
-      {
-        role: "user",
-        content: prompt
-      }
-    ],
-    model: "llama-3.3-70b-versatile",
-    temperature: 0.5, // Lower for more consistent recommendations
-    max_tokens: 800 // More tokens for detailed suggestions
-  });
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        model: model,
+        temperature: 0.5,
+        max_tokens: 800
+      });
 
-  return completion.choices[0]?.message?.content || null;
+      return completion.choices[0]?.message?.content || null;
+    } catch (err) {
+      lastError = err;
+      if (err.status === 404 || err.message?.includes("model") || err.code === "model_not_found") {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
 }
 
 /**

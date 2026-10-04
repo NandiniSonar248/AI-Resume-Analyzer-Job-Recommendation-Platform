@@ -68,11 +68,6 @@ export function AuthProvider({ children }) {
     try {
       const response = await loginUser(email, password);
       
-      // Check if email verification is required
-      if (response.requiresVerification) {
-        return { success: false, requiresVerification: true };
-      }
-      
       localStorage.setItem("token", response.token);
       if (response.refreshToken) {
         localStorage.setItem("refreshToken", response.refreshToken);
@@ -84,12 +79,6 @@ export function AuthProvider({ children }) {
     } catch (err) {
       const errorMsg = err.response?.data?.error || "Login failed";
       setError(errorMsg);
-      
-      // Check if the error indicates unverified email
-      if (err.response?.data?.requiresVerification) {
-        return { success: false, requiresVerification: true };
-      }
-      
       return { success: false };
     }
   };
@@ -98,7 +87,17 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const response = await registerUser(name, email, password);
-      // Don't set user or token yet - they need to verify email first
+      
+      if (response.token) {
+        localStorage.setItem("token", response.token);
+      }
+      if (response.refreshToken) {
+        localStorage.setItem("refreshToken", response.refreshToken);
+      }
+      localStorage.removeItem("guestMode");
+      setIsGuest(false);
+      setUser(response.user);
+      
       return { success: true, message: response.message };
     } catch (err) {
       setError(err.response?.data?.error || err.response?.data?.errors?.[0]?.msg || "Registration failed");

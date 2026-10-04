@@ -46,7 +46,7 @@ const userSchema = new mongoose.Schema({
   // Email Verification
   isVerified: {
     type: Boolean,
-    default: false
+    default: true
   },
   verificationOTP: {
     type: String,
@@ -180,7 +180,7 @@ userSchema.methods.toJSON = function() {
  * Check if account is currently locked
  */
 userSchema.methods.isLocked = function() {
-  return this.lockoutUntil && this.lockoutUntil > Date.now();
+  return !!(this.lockoutUntil && this.lockoutUntil > Date.now());
 };
 
 export default mongoose.model("User", userSchema);

@@ -251,6 +251,32 @@ export const analyzeKeywords = async (jobDescription) => {
   return response.data;
 };
 
+// ============ Application Tracker (Phase 5) ============
+export const getApplications = async () => {
+  const response = await api.get("/applications");
+  return response.data;
+};
+
+export const createApplication = async (applicationData) => {
+  const response = await api.post("/applications", applicationData);
+  return response.data;
+};
+
+export const updateApplication = async (id, applicationData) => {
+  const response = await api.put(`/applications/${id}`, applicationData);
+  return response.data;
+};
+
+export const updateApplicationStatus = async (id, status) => {
+  const response = await api.patch(`/applications/${id}/status`, { status });
+  return response.data;
+};
+
+export const deleteApplication = async (id) => {
+  const response = await api.delete(`/applications/${id}`);
+  return response.data;
+};
+
 // ============ Health Check ============
 export const checkHealth = async () => {
   const response = await api.get("/health");

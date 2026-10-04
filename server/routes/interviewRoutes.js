@@ -11,9 +11,89 @@ import {
   generateSampleAnswer,
   calculatePerformance,
 } from "../services/interviewPrepService.js";
+import {
+  createInterviewSession,
+  getInterviewSession,
+  startInterviewRound
+} from "../services/interview/interviewOrchestrator.js";
+import { generateSessionReport } from "../services/interview/sessionScorer.js";
 import { validateInterviewGenerate, validateInterviewEvaluate, validateInterviewSample, validateInterviewPerformance } from "../middleware/validators.js";
+import { optionalAuth } from "../middleware/auth.js";
 
 const router = express.Router();
+
+/**
+ * POST /api/interview/session
+ * Phase 4: Create a stateful multi-round interview session
+ */
+router.post("/session", optionalAuth, async (req, res) => {
+  try {
+    const { resumeText, jobDescription, roleTitle, companyName } = req.body;
+    const session = createInterviewSession({
+      userId: req.user?.id || "guest",
+      resumeText: resumeText || "",
+      jobDescription: jobDescription || "",
+      roleTitle: roleTitle || "Software Engineer",
+      companyName: companyName || "Target Company"
+    });
+
+    res.json({
+      success: true,
+      session: {
+        sessionId: session.sessionId,
+        availableRounds: session.availableRounds,
+        currentRound: session.currentRound,
+        roleTitle: session.roleTitle,
+        companyName: session.companyName,
+        createdAt: session.createdAt
+      }
+    });
+  } catch (err) {
+    console.error("Session creation error:", err);
+    res.status(500).json({ error: "Failed to initialize interview session" });
+  }
+});
+
+/**
+ * GET /api/interview/session/:sessionId
+ * Phase 4: Get session status & conversational history
+ */
+router.get("/session/:sessionId", (req, res) => {
+  const session = getInterviewSession(req.params.sessionId);
+  if (!session) {
+    return res.status(404).json({ error: "Interview session not found or expired" });
+  }
+  res.json({
+    success: true,
+    session: {
+      sessionId: session.sessionId,
+      availableRounds: session.availableRounds,
+      currentRound: session.currentRound,
+      currentRoundIndex: session.currentRoundIndex,
+      status: session.status,
+      turnsCount: session.turns.length,
+      currentQuestion: session.currentQuestion
+    }
+  });
+});
+
+/**
+ * POST /api/interview/session/:sessionId/report
+ * Phase 4: Generate end-of-session performance report via REST
+ */
+router.post("/session/:sessionId/report", async (req, res) => {
+  try {
+    const session = getInterviewSession(req.params.sessionId);
+    if (!session) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    const report = await generateSessionReport(session);
+    res.json({ success: true, report });
+  } catch (err) {
+    console.error("Report generation error:", err);
+    res.status(500).json({ error: "Failed to generate interview report" });
+  }
+});
 
 /**
  * POST /api/interview/generate-questions

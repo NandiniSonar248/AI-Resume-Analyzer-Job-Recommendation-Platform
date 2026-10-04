@@ -88,31 +88,41 @@ router.post("/register", registerValidation, async (req, res) => {
     // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      if (!existingUser.isVerified) {
-        // Delete unverified user and allow re-registration
-        await User.deleteOne({ _id: existingUser._id });
-      } else {
-        return res.status(400).json({ error: "Email already registered. Please login." });
-      }
+      return res.status(400).json({ error: "Email already registered. Please login." });
     }
 
-    // Create user
-    const user = await User.create({ name, email, password });
+    // Create user (auto-verified)
+    const user = await User.create({ name, email, password, isVerified: true });
 
-    // Generate and send verification OTP
-    const otp = user.generateVerificationOTP();
+    // Generate tokens for immediate login
+    const accessToken = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
+    user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    user.lastLogin = new Date();
     await user.save();
-    await sendVerificationOTP(email, otp, name);
 
-    logger.info(`New user registered`);
+    // Send thank you / welcome email asynchronously (does not block registration)
+    sendWelcomeEmail(email, user.name).catch((err) => {
+      logger.warn(`Failed to send welcome email to ${email}: ${err.message}`);
+    });
+
+    logger.info(`New user registered: ${email}`);
 
     res.status(201).json({
-      message: "Registration successful! Please check your email for verification code.",
-      email: user.email,
-      requiresVerification: true
+      message: "Registration successful! Welcome to JobMatch Pro.",
+      token: accessToken,
+      refreshToken: refreshToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isVerified: true
+      }
     });
   } catch (err) {
-    logger.error("Registration error");
+    logger.error("Registration error:", err);
     res.status(500).json({ error: "Registration failed. Please try again." });
   }
 });
@@ -282,19 +292,6 @@ router.post("/login", loginValidation, async (req, res) => {
 
       await user.save();
       return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    // Check if verified
-    if (!user.isVerified) {
-      const otp = user.generateVerificationOTP();
-      await user.save();
-      await sendVerificationOTP(email, otp, user.name);
-      
-      return res.status(403).json({ 
-        error: "Please verify your email first. A new code has been sent.",
-        requiresVerification: true,
-        email: user.email
-      });
     }
 
     // Successful login — reset lockout state

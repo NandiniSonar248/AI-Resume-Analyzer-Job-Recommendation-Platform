@@ -222,11 +222,11 @@ export async function sendPasswordResetEmail(email, resetToken, userName) {
 }
 
 /**
- * Send welcome email after verification
- * WHY: Improves user engagement and provides next steps
+ * Send welcome & thank you email upon registration
+ * WHY: Delivers a warm welcome message and explains platform features
  */
 export async function sendWelcomeEmail(email, userName) {
-  const subject = "Welcome to JobMatch Pro! 🎉";
+  const subject = "Thank you for creating your JobMatch Pro account! 🎉";
   
   const html = `
     <!DOCTYPE html>
@@ -236,41 +236,49 @@ export async function sendWelcomeEmail(email, userName) {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; margin: 0; padding: 40px 20px;">
-      <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+      <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
         
         <!-- Header -->
-        <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 32px;">🎉</h1>
-          <h2 style="color: white; margin: 12px 0 0; font-size: 24px;">Welcome Aboard!</h2>
+        <div style="background: linear-gradient(135deg, #0a66c2, #004182); padding: 32px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 32px;">🎯 JobMatch Pro</h1>
+          <h2 style="color: rgba(255,255,255,0.95); margin: 10px 0 0; font-size: 20px;">Thank You for Joining Us!</h2>
         </div>
         
         <!-- Content -->
         <div style="padding: 32px;">
-          <p style="color: #1e293b; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
-            Hi <strong>${userName}</strong>! 👋<br><br>
-            Your email is verified and your account is ready. You can now:
+          <p style="color: #1e293b; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">
+            Hi <strong>${userName || "there"}</strong>, 👋
           </p>
+          <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+            Thank you for creating an account with <strong>JobMatch Pro</strong>. Your account is active and ready to help you accelerate your job hunt and land your dream role.
+          </p>
+          
+          <h3 style="color: #1e293b; font-size: 16px; margin: 0 0 14px;">Here is what you can do right now:</h3>
           
           <!-- Features -->
           <div style="margin: 0 0 24px;">
             <div style="display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #f0fdf4; border-radius: 8px;">
               <span style="font-size: 24px; margin-right: 12px;">🎯</span>
-              <span style="color: #1e293b; font-size: 14px;"><strong>Analyze your resume</strong> against any job description</span>
+              <span style="color: #1e293b; font-size: 14px;"><strong>ATS Resume Matcher:</strong> Upload your resume and compare against any job description for an instant match score.</span>
             </div>
             <div style="display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #eff6ff; border-radius: 8px;">
               <span style="font-size: 24px; margin-right: 12px;">💼</span>
-              <span style="color: #1e293b; font-size: 14px;"><strong>Find matching jobs</strong> based on your skills</span>
+              <span style="color: #1e293b; font-size: 14px;"><strong>Real Live Job Search:</strong> Auto-match jobs directly from RemoteOK, Adzuna, and JSearch with real application links.</span>
             </div>
-            <div style="display: flex; align-items: center; padding: 12px; background: #fef3c7; border-radius: 8px;">
+            <div style="display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #fef3c7; border-radius: 8px;">
               <span style="font-size: 24px; margin-right: 12px;">📝</span>
-              <span style="color: #1e293b; font-size: 14px;"><strong>Build ATS-optimized resumes</strong> that get noticed</span>
+              <span style="color: #1e293b; font-size: 14px;"><strong>AI Resume Builder & Rewriter:</strong> Optimize keywords and export ATS-friendly PDF resumes.</span>
+            </div>
+            <div style="display: flex; align-items: center; padding: 12px; background: #faf5ff; border-radius: 8px;">
+              <span style="font-size: 24px; margin-right: 12px;">🎤</span>
+              <span style="color: #1e293b; font-size: 14px;"><strong>Mock Interview Prep:</strong> Practice tailored interview questions and receive instant AI feedback.</span>
             </div>
           </div>
           
           <!-- CTA -->
-          <div style="text-align: center;">
-            <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}" style="display: inline-block; background: #0a66c2; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px;">
-              Start Analyzing →
+          <div style="text-align: center; margin: 28px 0 10px;">
+            <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}/dashboard" style="display: inline-block; background: #0a66c2; color: white; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-weight: 600; font-size: 15px;">
+              Go to Your Dashboard →
             </a>
           </div>
         </div>
@@ -278,8 +286,8 @@ export async function sendWelcomeEmail(email, userName) {
         <!-- Footer -->
         <div style="background: #f8fafc; padding: 20px 32px; border-top: 1px solid #e2e8f0;">
           <p style="color: #94a3b8; font-size: 12px; margin: 0; text-align: center;">
-            Questions? Reply to this email. We're here to help!<br>
-            © 2026 JobMatch Pro
+            Have questions or feedback? Simply reply to this email.<br>
+            © 2026 JobMatch Pro. All rights reserved.
           </p>
         </div>
       </div>

@@ -1,0 +1,42 @@
+# Server .dockerignore
+# Prevents these files from being sent to the Docker build context.
+# Keeps the image lean and avoids including secrets or dev artifacts.
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (secrets must never enter the image)
+.env
+.env.local
+.env.*.local
+
+# Test files (not needed in production image)
+tests/
+coverage/
+*.test.js
+*.spec.js
+
+# Development tools
+.nodemon.json
+nodemon.json
+
+# Git
+.git/
+.gitignore
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Temp uploads (populated at runtime via named volume)
+uploads/

@@ -4,10 +4,13 @@
  */
 
 import express from "express";
-import { validateResumeOptimize, validateResumeRewrite, validateResumeCompare, validateGeneratePdf, validateAnalyzeKeywords } from "../middleware/validators.js";
+import { validateResumeOptimize, validateResumeRewrite, validateResumeCompare, validateGeneratePdf, validateAnalyzeKeywords, validateResumeTailor, validateCoverLetter, validateSkillGap } from "../middleware/validators.js";
 import { generateOptimizedResume, generatePDFResume } from "../services/resumeBuilderService.js";
 import { rewriteResumeForJob, getResumeChangeSummary } from "../services/resumeRewriterService.js";
-import { optionalAuth } from "../middleware/auth.js";
+import { tailorResumeForJob } from "../services/resume/tailoringService.js";
+import { generateCoverLetter } from "../services/resume/coverLetterService.js";
+import { generateSkillGapRoadmap } from "../services/resume/skillGapService.js";
+import { optionalAuth, authenticate } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -199,6 +202,104 @@ router.post("/compare", optionalAuth, validateResumeCompare, async (req, res) =>
   } catch (error) {
     console.error("Resume comparison error");
     res.status(500).json({ error: "Failed to compare resumes" });
+  }
+});
+
+/**
+ * POST /api/resume/tailor
+ * Phase 3: JD-tailored rewrite with anti-hallucination guardrail.
+ *
+ * WHY a separate endpoint from /rewrite:
+ *   The old /rewrite route uses resumeRewriterService.js which lacks the
+ *   guardrail. This new endpoint uses tailoringService.js which implements
+ *   the 5-layer anti-hallucination protection required by SPEC.md.
+ *   We keep the old endpoint live for backward compatibility with existing
+ *   frontend code, but the new ResultPanel tab calls this one.
+ */
+router.post("/tailor", optionalAuth, validateResumeTailor, async (req, res) => {
+  try {
+    const { resumeText, jobDescription } = req.body;
+    console.log("Phase 3: Tailoring resume with anti-hallucination guardrail...");
+
+    const result = await tailorResumeForJob(resumeText, jobDescription);
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
+    }
+
+    res.json({
+      success: true,
+      tailoredResume: result.tailoredResume,
+      guardrailReport: result.guardrailReport,
+      disclaimer: result.disclaimer,
+      timestamp: result.timestamp
+    });
+  } catch (err) {
+    console.error("Tailor route error:", err.message);
+    res.status(500).json({ error: "Failed to tailor resume. Please try again." });
+  }
+});
+
+/**
+ * POST /api/resume/cover-letter
+ * Phase 3: Generate a JD-matched cover letter from resume + JD context.
+ */
+router.post("/cover-letter", optionalAuth, validateCoverLetter, async (req, res) => {
+  try {
+    const { resumeText, jobDescription, userName, companyName, roleName } = req.body;
+    console.log("Phase 3: Generating cover letter...");
+
+    const result = await generateCoverLetter(resumeText, jobDescription, {
+      userName: userName || req.user?.name || "the candidate",
+      companyName: companyName || "your company",
+      roleName: roleName || "this role"
+    });
+
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
+    }
+
+    res.json({
+      success: true,
+      coverLetter: result.coverLetter,
+      wordCount: result.wordCount,
+      timestamp: result.timestamp
+    });
+  } catch (err) {
+    console.error("Cover letter route error:", err.message);
+    res.status(500).json({ error: "Failed to generate cover letter. Please try again." });
+  }
+});
+
+/**
+ * POST /api/resume/skill-gap
+ * Phase 3: Generate structured learning roadmap for each missing JD skill.
+ *
+ * WHY the frontend passes missingSkills directly:
+ *   The ATS analysis already computed missingSkills in the /api/analyze response.
+ *   Re-sending them here avoids re-uploading the resume file just to run the
+ *   same scorer again — the data is already in the client's state from the
+ *   previous analysis response.
+ */
+router.post("/skill-gap", optionalAuth, validateSkillGap, async (req, res) => {
+  try {
+    const { missingSkills, jobDescription } = req.body;
+    console.log(`Phase 3: Generating skill-gap roadmap for ${missingSkills.length} missing skills...`);
+
+    const result = await generateSkillGapRoadmap(missingSkills, jobDescription || "");
+
+    res.json({
+      success: true,
+      roadmap: result.roadmap,
+      aiGenerated: result.aiGenerated,
+      totalGaps: result.totalGaps || missingSkills.length,
+      shownGaps: result.shownGaps || missingSkills.length,
+      message: result.message,
+      timestamp: result.timestamp
+    });
+  } catch (err) {
+    console.error("Skill gap route error:", err.message);
+    res.status(500).json({ error: "Failed to generate skill gap roadmap. Please try again." });
   }
 });
 

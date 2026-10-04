@@ -21,9 +21,10 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { parseResume } from "../services/resumeParser.js";
-import { calculateATS, getScoreCategory } from "../services/atsEngine.js";
-import { generateSuggestions } from "../services/llamaService.js";
-import { generateAISuggestions, isAIAvailable } from "../services/aiService.js";
+import { calculateRuleBasedScore } from "../services/ats/ruleBasedScorer.js";
+import { checkParseability } from "../services/ats/parseabilityChecker.js";
+import { generateSentenceHighlights } from "../services/ats/explainability.js";
+import { getAiAssessment } from "../services/ats/aiScorer.js";
 import { validateResume } from "../services/resumeValidator.js";
 import { optionalAuth, authenticate } from "../middleware/auth.js";
 import Analysis from "../models/Analysis.js";
@@ -39,7 +40,7 @@ import { validateAnalyze } from "../middleware/validators.js";
  *   DOC:  ÐÏ    (hex: D0 CF 11 E0) — OLE2 Compound Document
  *   TXT:  No magic bytes — validated by checking for valid UTF-8 text
  */
-function validateFileMagicBytes(filePath, originalName) {
+export function validateFileMagicBytes(filePath, originalName) {
   const ext = path.extname(originalName).toLowerCase();
   const buffer = Buffer.alloc(4);
   const fd = fs.openSync(filePath, "r");
@@ -154,49 +155,74 @@ router.post("/", optionalAuth, upload.single("resume"), validateAnalyze, async (
     console.log(`Resume validation passed`);
     console.log(`Resume text extracted successfully`);
 
-    // Real-time ATS analysis
-    const { score, matched, missing } = calculateATS(resumeText, jdText);
-    const category = getScoreCategory(score);
-    
-    // Generate AI-powered suggestions (with fallback to rule-based)
-    const { suggestions, aiPowered } = await generateAISuggestions(score, matched, missing);
+    // 1. Run structural ATS Parseability Check on the uploaded document
+    const parseabilityResults = await checkParseability(filePath, originalName, resumeText);
 
-    // Prepare response - All data is generated in real-time
+    // 2. Run deterministic Multi-Factor Rule-Based Scoring
+    const ruleBasedResults = calculateRuleBasedScore(
+      resumeText,
+      jdText,
+      parseabilityResults.score
+    );
+
+    // 3. Run Sentence-Level Explainability Engine
+    const explainabilityResults = generateSentenceHighlights(
+      resumeText,
+      jdText,
+      ruleBasedResults.matchedKeywords,
+      ruleBasedResults.missingKeywords
+    );
+
+    // 4. Run Qualitative AI Assessment (Groq Llama - parallel layer)
+    const aiAssessment = await getAiAssessment(
+      resumeText,
+      jdText,
+      ruleBasedResults
+    );
+
+    // 5. Prepare complete unified response payload
     const result = {
-      atsScore: score,
-      category: category.label,
-      categoryColor: category.color,
-      categoryEmoji: category.emoji,
-      matchedKeywords: matched,
-      missingKeywords: missing,
-      suggestions: suggestions,
-      totalKeywords: matched.length + missing.length,
-      matchPercentage: matched.length + missing.length > 0
-        ? Math.round((matched.length / (matched.length + missing.length)) * 100)
-        : 0,
+      atsScore: ruleBasedResults.overallScore,
+      category: ruleBasedResults.category,
+      categoryColor: ruleBasedResults.categoryColor,
+      categoryEmoji: ruleBasedResults.categoryEmoji,
+      subScores: ruleBasedResults.subScores,
+      parseability: parseabilityResults,
+      sentenceHighlights: explainabilityResults.highlights,
+      sentenceSummary: explainabilityResults.summary,
+      aiAssessment: aiAssessment,
+      matchedKeywords: ruleBasedResults.matchedKeywords,
+      missingKeywords: ruleBasedResults.missingKeywords,
+      suggestions: aiAssessment.actionableTips?.join("\n\n") || "",
+      totalKeywords: ruleBasedResults.totalKeywordsCount,
+      matchPercentage: ruleBasedResults.subScores?.skillsCoverage?.score || ruleBasedResults.overallScore,
       resumeConfidence: validation.confidence,
       analyzedAt: new Date().toISOString(),
       isRealTime: true,
-      aiPowered: aiPowered,
+      aiPowered: aiAssessment.aiAvailable,
       resumeText: resumeText,
       jobDescription: jdText
     };
 
     // Save to MongoDB linked to user (non-blocking)
     Analysis.create({
-      userId: req.user?._id, // Link to user if logged in
-      atsScore: score,
-      category: category.label,
-      matchedKeywords: matched,
-      missingKeywords: missing,
-      aiSuggestions: suggestions,
-      aiPowered: aiPowered,
+      userId: req.user?._id,
+      atsScore: ruleBasedResults.overallScore,
+      category: ruleBasedResults.category,
+      matchedKeywords: ruleBasedResults.matchedKeywords,
+      missingKeywords: ruleBasedResults.missingKeywords,
+      subScores: ruleBasedResults.subScores,
+      parseability: parseabilityResults,
+      sentenceHighlights: explainabilityResults.highlights,
+      aiAssessment: aiAssessment,
+      aiSuggestions: aiAssessment.actionableTips?.join("\n\n") || "",
+      aiPowered: aiAssessment.aiAvailable,
       resumeName: originalName,
       resumeConfidence: validation.confidence,
       jobDescriptionPreview: jdText.substring(0, 500)
-    }).catch(err => console.warn("DB save failed"));
+    }).catch(err => console.warn("DB save warning:", err.message));
 
-    console.log(`Analysis complete`);
+    console.log(`ATS Analysis complete: Score ${ruleBasedResults.overallScore}% (${ruleBasedResults.category})`);
     res.json(result);
 
   } catch (err) {

@@ -9,11 +9,12 @@ import { useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import InterviewQuestion from "../components/InterviewQuestion";
+import InterviewRoom from "../components/interview/InterviewRoom";
 import { useAuth } from "../context/AuthContext";
 
 export default function InterviewPrep() {
   const { isGuest } = useAuth();
-  const [stage, setStage] = useState("input"); // input, questions, practice, results
+  const [stage, setStage] = useState("input"); // input, live_interview, questions, practice, results
   const [jobDescription, setJobDescription] = useState("");
   const [resume, setResume] = useState("");
   const [questions, setQuestions] = useState([]);
@@ -194,13 +195,29 @@ export default function InterviewPrep() {
             <small>Copy and paste your complete resume text</small>
           </div>
 
-          <button
-            onClick={handleGenerateQuestions}
-            disabled={loading || !jobDescription.trim() || !resume.trim()}
-            className="btn-primary interview-btn"
-          >
-            {loading ? "🔄 Generating Questions..." : "✨ Generate Interview Questions"}
-          </button>
+          <div className="interview-mode-actions">
+            <button
+              onClick={() => {
+                if (!jobDescription.trim() || !resume.trim()) {
+                  toast.error("Please enter both job description and resume");
+                  return;
+                }
+                setStage("live_interview");
+              }}
+              disabled={loading || !jobDescription.trim() || !resume.trim()}
+              className="btn-primary-lg interview-mode-btn"
+            >
+              🎙️ Start Live Voice Interview (Adaptive Rounds)
+            </button>
+
+            <button
+              onClick={handleGenerateQuestions}
+              disabled={loading || !jobDescription.trim() || !resume.trim()}
+              className="btn-secondary interview-mode-btn"
+            >
+              {loading ? "🔄 Generating Questions..." : "📝 Practice Questions (Flashcard Mode)"}
+            </button>
+          </div>
         </div>
 
         {isGuest && (
@@ -208,6 +225,23 @@ export default function InterviewPrep() {
             <p>💡 Tip: You're using guest mode. Sign up to save your interview practice sessions!</p>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // STAGE: LIVE ADAPTIVE VOICE INTERVIEW (PHASE 4)
+  if (stage === "live_interview") {
+    return (
+      <div className="interview-prep-container">
+        <div className="interview-top-nav">
+          <button className="btn-back-link" onClick={() => setStage("input")}>
+            ← Exit to Setup
+          </button>
+        </div>
+        <InterviewRoom
+          resumeText={resume}
+          jobDescription={jobDescription}
+        />
       </div>
     );
   }

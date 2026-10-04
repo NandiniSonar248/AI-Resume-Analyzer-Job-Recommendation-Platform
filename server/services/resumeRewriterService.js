@@ -8,7 +8,46 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groqClient = null;
+const apiKey = process.env.GROQ_API_KEY;
+if (apiKey && apiKey.startsWith("gsk_")) {
+  try {
+    groqClient = new Groq({ apiKey });
+  } catch (e) {
+    console.warn("Groq init error in resumeRewriterService");
+  }
+}
+
+async function callGroqRewrite(messages, max_tokens = 2000, temperature = 0.6) {
+  if (!groqClient) throw new Error("Groq client not initialized");
+  const candidateModels = [
+    process.env.GROQ_MODEL,
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "llama3-70b-8192",
+    "llama3-8b-8192"
+  ].filter(Boolean);
+
+  let lastError = null;
+  for (const model of candidateModels) {
+    try {
+      const completion = await groqClient.chat.completions.create({
+        messages,
+        model,
+        temperature,
+        max_tokens
+      });
+      return completion.choices[0]?.message?.content || null;
+    } catch (err) {
+      lastError = err;
+      if (err.status === 404 || err.message?.includes("model") || err.code === "model_not_found") {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
 
 /**
  * Rewrite resume to match job description
@@ -38,23 +77,16 @@ INSTRUCTIONS:
 IMPORTANT: Return ONLY the improved resume text, NO explanations or commentary.
 Maintain professional resume format.`;
 
-    const completion = await groqClient.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert ATS-focused resume writer. Rewrite resumes to perfectly match job descriptions while maintaining authenticity."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.6,
-      max_tokens: 2000
-    });
-
-    const improvedResume = completion.choices[0]?.message?.content || null;
+    const improvedResume = await callGroqRewrite([
+      {
+        role: "system",
+        content: "You are an expert ATS-focused resume writer. Rewrite resumes to perfectly match job descriptions while maintaining authenticity."
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ], 2000, 0.6);
 
     return {
       success: true,
@@ -63,7 +95,7 @@ Maintain professional resume format.`;
       timestamp: new Date().toISOString()
     };
   } catch (err) {
-    console.error("Resume rewriting error");
+    console.error("Resume rewriting error:", err.message);
     return {
       success: false,
       error: "Failed to rewrite resume. Please try again.",
@@ -104,25 +136,20 @@ Format:
 ## EMPHASIZED
 - Section 1`;
 
-    const completion = await groqClient.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are a resume expert. Provide concise, specific comparisons."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.5,
-      max_tokens: 500
-    });
+    const summary = await callGroqRewrite([
+      {
+        role: "system",
+        content: "You are a resume expert. Provide concise, specific comparisons."
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ], 500, 0.5);
 
-    return completion.choices[0]?.message?.content || "No summary available";
+    return summary || "No summary available";
   } catch (err) {
-    console.error("Change summary error");
+    console.error("Change summary error:", err.message);
     return "Could not generate change summary";
   }
 }

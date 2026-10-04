@@ -32,7 +32,7 @@ export async function parseResume(filePath, originalName = "") {
       }
     }
 
-    // Clean and normalize text
+    // Clean text preserving line breaks and sentence punctuation for explainability
     text = cleanText(text);
 
     if (text.length < 30) {
@@ -41,7 +41,7 @@ export async function parseResume(filePath, originalName = "") {
 
     return text;
   } catch (err) {
-    console.error("Resume parsing error");
+    console.error("Resume parsing error:", err.message);
     throw new Error("Unable to parse resume. Please upload a valid PDF, DOCX, or TXT file.");
   }
 }
@@ -88,14 +88,14 @@ function isPDF(buffer) {
 }
 
 /**
- * Clean and normalize text
+ * Clean text while preserving sentence punctuation, bullet formatting, and structure
  */
 function cleanText(text) {
   return text
-    .replace(/[\r\n]+/g, " ")       // Replace newlines with space
-    .replace(/\s+/g, " ")           // Multiple spaces to single
-    .replace(/[^\w\s@.+-]/g, " ")   // Keep alphanumeric, @, ., +, -
-    .toLowerCase()
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, 10000);               // Limit text length
+    .slice(0, 20000);
 }

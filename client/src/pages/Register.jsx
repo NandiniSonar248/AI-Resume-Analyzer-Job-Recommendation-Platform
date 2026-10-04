@@ -49,8 +49,8 @@ export default function Register() {
     setLoading(false);
     
     if (result.success) {
-      toast.success("Account created! Please verify your email.");
-      navigate("/verify-email", { state: { email } });
+      toast.success("Welcome to JobMatch Pro! Account created successfully 🎉");
+      navigate("/dashboard");
     }
   };
 

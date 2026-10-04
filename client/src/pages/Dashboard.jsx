@@ -24,6 +24,7 @@ import ResumeForm from "../components/ResumeForm";
 import ResultPanel from "../components/ResultPanel";
 import JobsPage from "./JobsPage";
 import ResumeBuilder from "./ResumeBuilder";
+import ApplicationTracker from "./ApplicationTracker";
 import { getAnalysisHistory, matchJobsByResumeText } from "../api";
 import toast from "react-hot-toast";
 
@@ -120,6 +121,7 @@ export default function Dashboard() {
   const tabs = [
     { id: "analyze", label: "ATS Analyzer", icon: "🎯" },
     { id: "jobs", label: "Find Jobs", icon: "💼" },
+    { id: "tracker", label: "Application Tracker", icon: "📌" },
     { id: "builder", label: "Resume Builder", icon: "📝" },
     { id: "interview", label: "Interview Prep", icon: "🎤", external: true, href: "/interview" },
     { id: "history", label: "History", icon: "📊", requiresAuth: true }
@@ -287,6 +289,11 @@ export default function Dashboard() {
             autoMatchedJobs={autoMatchedJobs}
             autoMatchLoading={autoMatchLoading}
           />
+        )}
+
+        {/* Application Tracker Tab */}
+        {activeTab === "tracker" && (
+          <ApplicationTracker />
         )}
 
         {/* Resume Builder Tab */}
