@@ -27,6 +27,10 @@ COPY --chown=appuser:appgroup . .
 # Remove test files and dev assets from production image
 RUN rm -rf tests/ .env.example .env
 
+# Fix EACCES permissions: grant appuser ownership of the /app directory 
+# so it can dynamically create the 'uploads' folder at runtime.
+RUN chown -R appuser:appgroup /app
+
 # Switch to non-root user
 USER appuser
 
